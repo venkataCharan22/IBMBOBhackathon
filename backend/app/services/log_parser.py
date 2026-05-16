@@ -64,8 +64,22 @@ def parse_logs(raw_text: str) -> Dict:
         result["line_numbers"].append(int(line_num))
         result["file_line_pairs"].append((file_path, int(line_num)))
     
+    # Extract Java stack traces (check before JS to avoid conflicts)
+    # Pattern: at package.Class.method(File.java:123)
+    java_pattern = r'at\s+[\w.$]+\(([^:)]+):(\d+)\)'
+    java_matches = re.findall(java_pattern, raw_text)
+    
+    for file_path, line_num in java_matches:
+        # Extract just the filename from the full path if present
+        java_file = file_path.split('/')[-1] if '/' in file_path else file_path
+        if java_file not in result["files"]:
+            result["files"].append(java_file)
+            result["line_numbers"].append(int(line_num))
+            result["file_line_pairs"].append((java_file, int(line_num)))
+    
     # Extract JavaScript stack traces
     # Pattern: at path/to/file.js:123:45 or at Object.method (file.js:123:45)
+    # Only match if NOT in Java format (which has parentheses with method call before file)
     js_pattern = r'at\s+(?:[\w.<>]+\s+)?\(?([^\s:)]+):(\d+)(?::(\d+))?\)?'
     js_matches = re.findall(js_pattern, raw_text)
     
@@ -73,22 +87,15 @@ def parse_logs(raw_text: str) -> Dict:
         file_path = match[0]
         line_num = int(match[1])
         
-        # Skip if already added from Python pattern
+        # Skip if it looks like a Java method call (contains dots and capital letters)
+        # or if already added from Python or Java patterns
+        if '.' in file_path and any(c.isupper() for c in file_path.split('.')[-2] if len(file_path.split('.')) > 1):
+            continue
+            
         if file_path not in result["files"]:
             result["files"].append(file_path)
             result["line_numbers"].append(line_num)
             result["file_line_pairs"].append((file_path, line_num))
-    
-    # Extract Java stack traces
-    # Pattern: at package.Class.method(File.java:123)
-    java_pattern = r'at\s+[\w.$]+\(([^:)]+):(\d+)\)'
-    java_matches = re.findall(java_pattern, raw_text)
-    
-    for file_path, line_num in java_matches:
-        if file_path not in result["files"]:
-            result["files"].append(file_path)
-            result["line_numbers"].append(int(line_num))
-            result["file_line_pairs"].append((file_path, int(line_num)))
     
     # Extract error type and message
     # Python: ErrorType: message
