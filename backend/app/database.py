@@ -71,9 +71,9 @@ class Database:
             )
         """)
         
-        # Analysis results table
+        # Analysis reports table
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS analysis_results (
+            CREATE TABLE IF NOT EXISTS analysis_reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 risk_id INTEGER,
                 agent_name TEXT NOT NULL,
@@ -89,7 +89,7 @@ class Database:
         # Create indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_risks_project ON risks(project_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_risks_status ON risks(status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_risk ON analysis_results(risk_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_risk ON analysis_reports(risk_id)")
         
         conn.commit()
         conn.close()
@@ -222,9 +222,46 @@ class Database:
         conn.close()
         
         return [dict(row) for row in rows]
+    
+    def save_analysis_report(self, risk_id: int, agent_name: str,
+                            analysis_type: str, result: str,
+                            confidence_score: float = 0.0, **kwargs) -> int:
+        """Save an analysis report from an agent"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        metadata = json.dumps(kwargs) if kwargs else None
+        
+        cursor.execute("""
+            INSERT INTO analysis_reports (
+                risk_id, agent_name, analysis_type, result,
+                confidence_score, metadata
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (risk_id, agent_name, analysis_type, result, confidence_score, metadata))
+        
+        report_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        return report_id
+    
+    def get_analysis_reports(self, risk_id: int) -> list[dict]:
+        """Get all analysis reports for a risk"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT * FROM analysis_reports
+            WHERE risk_id = ?
+            ORDER BY created_at DESC
+        """, (risk_id,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
 
 
 # Global database instance
 db = Database()
-
-# Made with Bob
